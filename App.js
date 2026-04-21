@@ -364,10 +364,15 @@ export default function App() {
   const [error, setError]                   = useState(null);
 
   // Card flip animation
-  const flipX  = useRef(new Animated.Value(1)).current;
+  const flipRot = useRef(new Animated.Value(0)).current;
   const cardY  = useRef(new Animated.Value(0)).current;
   const cardOp = useRef(new Animated.Value(1)).current;
   const busy   = useRef(false);
+
+  // 3D tilt (hover)
+  const tiltX  = useRef(new Animated.Value(0)).current;
+  const tiltY  = useRef(new Animated.Value(0)).current;
+  const [shineStyle, setShineStyle] = useState({ left: '50%', top: '50%', opacity: 0 });
 
   // Ambient orb drift
   const orbX = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
@@ -445,18 +450,18 @@ export default function App() {
     busy.current = true;
 
     Animated.parallel([
-      Animated.timing(flipX,  { toValue: 0, duration: 185, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      Animated.timing(cardY,  { toValue: -20, duration: 165, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(cardOp, { toValue: 0, duration: 155, useNativeDriver: true }),
+      Animated.timing(flipRot, { toValue: 1, duration: 185, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(cardY,   { toValue: -20, duration: 165, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(cardOp,  { toValue: 0, duration: 155, useNativeDriver: true }),
     ]).start(() => {
       onMidpoint();
+      flipRot.setValue(0);
       Animated.parallel([
-        Animated.spring(flipX,  { toValue: 1, speed: 14, bounciness: 9, useNativeDriver: true }),
         Animated.spring(cardY,  { toValue: 0, speed: 20, bounciness: 5, useNativeDriver: true }),
         Animated.timing(cardOp, { toValue: 1, duration: 230, useNativeDriver: true }),
       ]).start(() => { busy.current = false; });
     });
-  }, [flipX, cardY, cardOp]);
+  }, [flipRot, cardY, cardOp]);
 
   const handleTap = useCallback(() => {
     if (isLocked) return;
@@ -468,6 +473,24 @@ export default function App() {
       setCount(c => c + 1);
     });
   }, [animateCard, triggerMagic, theme, isLocked]);
+
+  const handleCardMouseMove = useCallback((e) => {
+    if (!IS_WEB) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width;   // 0–1
+    const ny = (e.clientY - rect.top)  / rect.height;  // 0–1
+    const x = nx - 0.5;  // -0.5 to 0.5
+    const y = ny - 0.5;
+    Animated.spring(tiltY, { toValue: x * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+    Animated.spring(tiltX, { toValue: y * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+    setShineStyle({ left: `${nx * 100}%`, top: `${ny * 100}%`, opacity: 0.18 });
+  }, [tiltX, tiltY]);
+
+  const handleCardMouseLeave = useCallback(() => {
+    Animated.spring(tiltX, { toValue: 0, useNativeDriver: false, speed: 8, bounciness: 3 }).start();
+    Animated.spring(tiltY, { toValue: 0, useNativeDriver: false, speed: 8, bounciness: 3 }).start();
+    setShineStyle(s => ({ ...s, opacity: 0 }));
+  }, [tiltX, tiltY]);
 
   const handleSetTheme = async () => {
     const trimmed = inputText.trim();
@@ -529,6 +552,13 @@ export default function App() {
 
   // Glow interpolation
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.22] });
+
+  // 3D tilt interpolations (JS driver — separate from native-driver card)
+  const tiltRotX = tiltX.interpolate({ inputRange: [-1, 1], outputRange: ['12deg', '-12deg'] });
+  const tiltRotY = tiltY.interpolate({ inputRange: [-1, 1], outputRange: ['-12deg', '12deg'] });
+
+  // Flip — rotateY sweeps to 90deg then card content swaps
+  const flipRotY = flipRot.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
 
   // Ring interpolations
   const ring1Scale = ringAnim.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1.6] });
@@ -634,7 +664,23 @@ export default function App() {
           pointerEvents="none"
         />
 
-        {/* Card */}
+        {/* Card — 3D tilt wrapper */}
+        <Animated.View
+          style={[
+            styles.cardTiltWrapper,
+            IS_WEB && {
+              transform: [
+                { perspective: 900 },
+                { rotateX: tiltRotX },
+                { rotateY: tiltRotY },
+              ],
+            },
+          ]}
+          {...(IS_WEB && {
+            onMouseMove: handleCardMouseMove,
+            onMouseLeave: handleCardMouseLeave,
+          })}
+        >
         <TouchableWithoutFeedback onPress={handleTap}>
           <Animated.View
             style={[
@@ -644,7 +690,7 @@ export default function App() {
                 height: CARD_H,
                 borderColor: accent,
                 shadowColor: accent,
-                transform: [{ scaleX: flipX }, { translateY: Animated.add(cardY, floatY) }],
+                transform: [{ rotateY: flipRotY }, { translateY: Animated.add(cardY, floatY) }],
                 opacity: cardOp,
               },
             ]}
@@ -717,8 +763,17 @@ export default function App() {
             {isLocked && (
               <View style={[styles.lockedOverlay, { borderColor: `${accent}35` }]} pointerEvents="none" />
             )}
+
+            {/* 3D shine highlight — follows mouse */}
+            {IS_WEB && (
+              <View
+                style={[styles.cardShine, shineStyle, { filter: 'blur(32px)' }]}
+                pointerEvents="none"
+              />
+            )}
           </Animated.View>
         </TouchableWithoutFeedback>
+        </Animated.View>
 
         {/* Lock toggle */}
         <TouchableOpacity
@@ -914,6 +969,19 @@ const styles = StyleSheet.create({
     width: CARD_W + 48,
     height: CARD_H + 48,
     borderRadius: 40,
+  },
+  cardTiltWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardShine: {
+    position: 'absolute',
+    width: CARD_W * 0.7,
+    height: CARD_W * 0.7,
+    borderRadius: CARD_W * 0.35,
+    marginLeft: -(CARD_W * 0.35),
+    marginTop: -(CARD_W * 0.35),
+    backgroundColor: '#ffffff',
   },
   card: {
     backgroundColor: CARD_BG,
