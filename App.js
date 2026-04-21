@@ -145,81 +145,140 @@ function nextTheme(current) {
 
 // ─── Ornament ─────────────────────────────────────────────────────────────────
 function TarotOrnament({ color, size = 124 }) {
-  const ORN = size;
+  const ORN  = size;
   const half = ORN / 2;
+
+  // 7 concentric rings — innermost bright, outermost ghost
   const rings = [
-    { r: 0.96, op: 0.18 },
-    { r: 0.72, op: 0.32 },
-    { r: 0.48, op: 0.48 },
-    { r: 0.26, op: 0.68 },
+    { r: 0.97, op: 0.08, w: 0.5 },
+    { r: 0.84, op: 0.14, w: 0.5 },
+    { r: 0.70, op: 0.22, w: 1   },
+    { r: 0.56, op: 0.32, w: 1   },
+    { r: 0.42, op: 0.44, w: 1   },
+    { r: 0.28, op: 0.58, w: 1   },
+    { r: 0.14, op: 0.75, w: 1   },
   ];
-  const midR   = half * 0.48;
-  const outerR = half * 0.84;
-  const a4  = [0, 90, 180, 270];
-  const a8  = [0, 45, 90, 135, 180, 225, 270, 315];
+
+  // 4 major + 4 minor + 8 micro spokes
+  const majSpokes = [0, 45, 90, 135];
+  const minSpokes = [22.5, 67.5, 112.5, 157.5];
+
+  // 4 rings of dots: 16 / 12 / 8 / 4
+  const dotRings = [
+    { r: half * 0.84, n: 16, s: 1.8, op: 0.24 },
+    { r: half * 0.70, n: 12, s: 2.5, op: 0.32 },
+    { r: half * 0.56, n: 8,  s: 3.5, op: 0.46 },
+    { r: half * 0.42, n: 4,  s: 3,   op: 0.55 },
+  ];
+
+  // Small diamonds on mid ring (8 directions)
+  const midDiamR = half * 0.56;
+  const a8 = [0, 45, 90, 135, 180, 225, 270, 315];
+
+  // Large pointed diamonds — cardinal N/S/E/W just outside outermost ring
+  const bigDiamR = half * 0.94;
+  const a4 = [0, 90, 180, 270];
+
+  // Elongated spike tips — thin rectangles at N/S/E/W
+  const spikeLen = half * 0.22;
 
   return (
     <View style={{ width: ORN, height: ORN, alignItems: 'center', justifyContent: 'center' }}>
-      {rings.map(({ r, op }, i) => {
+
+      {/* Rings */}
+      {rings.map(({ r, op, w }, i) => {
         const d = ORN * r;
         return (
-          <View key={i} style={{
+          <View key={`r${i}`} style={{
             position: 'absolute', width: d, height: d, borderRadius: d / 2,
-            borderWidth: 1, borderColor: color, opacity: op,
+            borderWidth: w, borderColor: color, opacity: op,
           }} />
         );
       })}
 
-      {/* Cross + diagonal spokes */}
-      <View style={{ position: 'absolute', width: ORN * 0.86, height: 1, backgroundColor: color, opacity: 0.17 }} />
-      <View style={{ position: 'absolute', width: 1, height: ORN * 0.86, backgroundColor: color, opacity: 0.17 }} />
-      {[45, -45].map(deg => (
-        <View key={deg} style={{
-          position: 'absolute', width: ORN * 0.86, height: 1,
-          backgroundColor: color, opacity: 0.11,
+      {/* Major spokes */}
+      {majSpokes.map(deg => (
+        <View key={`mj${deg}`} style={{
+          position: 'absolute', width: ORN * 0.90, height: 1,
+          backgroundColor: color, opacity: 0.18,
           transform: [{ rotate: `${deg}deg` }],
         }} />
       ))}
 
-      {/* Cardinal dots on middle ring */}
-      {a4.map(deg => {
-        const rad = deg * Math.PI / 180;
-        return (
-          <View key={`m${deg}`} style={{
-            position: 'absolute', width: 5, height: 5, borderRadius: 2.5,
-            backgroundColor: color, opacity: 0.78,
-            top: half - 2.5 - Math.sin(rad) * midR,
-            left: half - 2.5 + Math.cos(rad) * midR,
-          }} />
-        );
-      })}
-
-      {/* Small ticks on outer ring */}
-      {a8.map(deg => {
-        const rad = deg * Math.PI / 180;
-        return (
-          <View key={`o${deg}`} style={{
-            position: 'absolute', width: 3, height: 3, borderRadius: 1.5,
-            backgroundColor: color, opacity: 0.42,
-            top: half - 1.5 - Math.sin(rad) * outerR,
-            left: half - 1.5 + Math.cos(rad) * outerR,
-          }} />
-        );
-      })}
-
-      {/* Diamond tips N/S/E/W */}
-      {[[0, -1, 0], [0, 1, 0], [-1, 0, 90], [1, 0, 90]].map(([dx, dy, rot], i) => (
-        <View key={`d${i}`} style={{
-          position: 'absolute', width: 6, height: 6,
-          backgroundColor: color, opacity: 0.55,
-          transform: [{ rotate: '45deg' }],
-          top: half - 3 + dy * half * 0.86,
-          left: half - 3 + dx * half * 0.86,
+      {/* Minor spokes */}
+      {minSpokes.map(deg => (
+        <View key={`mn${deg}`} style={{
+          position: 'absolute', width: ORN * 0.68, height: 0.5,
+          backgroundColor: color, opacity: 0.09,
+          transform: [{ rotate: `${deg}deg` }],
         }} />
       ))}
 
-      {/* Center ✦ */}
-      <Text style={{ color, fontSize: 20, opacity: 0.92, fontFamily: FF_POPPINS }}>✦</Text>
+      {/* Dot rings */}
+      {dotRings.flatMap(({ r, n, s, op }) =>
+        Array.from({ length: n }, (_, i) => {
+          const rad = (i / n) * Math.PI * 2;
+          return (
+            <View key={`d${r.toFixed(0)}-${i}`} style={{
+              position: 'absolute',
+              width: s, height: s, borderRadius: s / 2,
+              backgroundColor: color, opacity: op,
+              top:  half - s / 2 - Math.sin(rad) * r,
+              left: half - s / 2 + Math.cos(rad) * r,
+            }} />
+          );
+        })
+      )}
+
+      {/* Small diamonds on mid ring — 8 directions */}
+      {a8.map(deg => {
+        const rad = deg * Math.PI / 180;
+        return (
+          <View key={`sd${deg}`} style={{
+            position: 'absolute', width: 5, height: 5,
+            backgroundColor: color, opacity: 0.48,
+            transform: [{ rotate: '45deg' }],
+            top:  half - 2.5 - Math.sin(rad) * midDiamR,
+            left: half - 2.5 + Math.cos(rad) * midDiamR,
+          }} />
+        );
+      })}
+
+      {/* Large cardinal diamonds — N/S/E/W */}
+      {a4.map(deg => {
+        const rad = deg * Math.PI / 180;
+        return (
+          <View key={`ld${deg}`} style={{
+            position: 'absolute', width: 9, height: 9,
+            backgroundColor: color, opacity: 0.68,
+            transform: [{ rotate: '45deg' }],
+            top:  half - 4.5 - Math.sin(rad) * bigDiamR,
+            left: half - 4.5 + Math.cos(rad) * bigDiamR,
+          }} />
+        );
+      })}
+
+      {/* Spike tips beyond cardinal diamonds */}
+      {a4.map(deg => {
+        const rad = deg * Math.PI / 180;
+        const cx  = half + Math.cos(rad) * (bigDiamR + 10);
+        const cy  = half - Math.sin(rad) * (bigDiamR + 10);
+        const isVertical = deg === 90 || deg === 270;
+        return (
+          <View key={`sp${deg}`} style={{
+            position: 'absolute',
+            width:  isVertical ? 1.5 : spikeLen,
+            height: isVertical ? spikeLen : 1.5,
+            backgroundColor: color, opacity: 0.40,
+            top:  cy - (isVertical ? spikeLen / 2 : 0.75),
+            left: cx - (isVertical ? 0.75 : spikeLen / 2),
+          }} />
+        );
+      })}
+
+      {/* Center double-star */}
+      <Text style={{ position: 'absolute', color, fontSize: 18, opacity: 0.35, fontFamily: FF_POPPINS }}>✦</Text>
+      <Text style={{ color, fontSize: 26, opacity: 0.96, fontFamily: FF_POPPINS }}>✦</Text>
     </View>
   );
 }
@@ -288,8 +347,8 @@ const SPARK_PROPS = Array.from({ length: SPARK_N }, (_, i) => ({
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const { width, height } = Dimensions.get('window');
-const CARD_W = Math.min(width - 56, 310);
-const CARD_H = Math.min(Math.round(CARD_W * 1.62), height - 230);
+const CARD_W = Math.min(width - 56, 300);
+const CARD_H = Math.min(Math.round(CARD_W * 1.88), height - 180);
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -314,6 +373,10 @@ export default function App() {
   const orbX = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
   const orbY = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
 
+  // Card float + glow
+  const floatY  = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     const drift = (val, a, b, dA, dB) =>
       Animated.loop(Animated.sequence([
@@ -328,6 +391,18 @@ export default function App() {
     drift(orbY[1],  55, -40, 10000, 14000).start();
     drift(orbX[2],  45, -65,  8000, 11000).start();
     drift(orbY[2], -60,  35, 12000,  8000).start();
+
+    // Gentle float
+    Animated.loop(Animated.sequence([
+      Animated.timing(floatY, { toValue: -7, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(floatY, { toValue:  7, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ])).start();
+
+    // Glow pulse
+    Animated.loop(Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ])).start();
   }, []);
 
   // Magic effects
@@ -452,6 +527,9 @@ export default function App() {
 
   const { accent } = theme;
 
+  // Glow interpolation
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.22] });
+
   // Ring interpolations
   const ring1Scale = ringAnim.interpolate({ inputRange: [0, 1], outputRange: [0.15, 1.6] });
   const ring1Op    = ringAnim.interpolate({ inputRange: [0, 0.15, 0.6, 1], outputRange: [0, 0.65, 0.3, 0] });
@@ -545,6 +623,17 @@ export default function App() {
           })}
         </View>
 
+        {/* Card glow — floats behind the card */}
+        <Animated.View
+          style={[styles.cardGlow, {
+            backgroundColor: accent,
+            opacity: glowOpacity,
+            transform: [{ translateY: floatY }],
+            ...(IS_WEB && { filter: 'blur(38px)' }),
+          }]}
+          pointerEvents="none"
+        />
+
         {/* Card */}
         <TouchableWithoutFeedback onPress={handleTap}>
           <Animated.View
@@ -555,7 +644,7 @@ export default function App() {
                 height: CARD_H,
                 borderColor: accent,
                 shadowColor: accent,
-                transform: [{ scaleX: flipX }, { translateY: cardY }],
+                transform: [{ scaleX: flipX }, { translateY: Animated.add(cardY, floatY) }],
                 opacity: cardOp,
               },
             ]}
@@ -565,12 +654,28 @@ export default function App() {
               <TarotOrnament color={accent} size={CARD_W - 48} />
             </View>
 
-            <View style={[styles.innerFrame, { borderColor: `${accent}30` }]}>
+            {/* Side ornaments */}
+            {[styles.sideOrnL, styles.sideOrnR].map((pos, si) => (
+              <View key={`so${si}`} style={[styles.sideOrn, pos]} pointerEvents="none">
+                {['✦','◆','·','◆','✦','◆','·','◆','✦','◆','·','◆','✦'].map((ch, i) => (
+                  <Text key={i} style={[styles.sideChar, {
+                    color: ch === '✦' ? `${accent}70` : ch === '◆' ? `${accent}48` : `${accent}28`,
+                  }]}>{ch}</Text>
+                ))}
+              </View>
+            ))}
+
+            <View style={[styles.innerFrame, { borderColor: `${accent}35` }]}>
+
+              {/* Inner accent border */}
+              <View style={[styles.innerBorder, { borderColor: `${accent}14` }]} pointerEvents="none" />
 
               {/* Top */}
               <View style={styles.cardHead}>
                 <View style={[styles.headLine, { backgroundColor: `${accent}40` }]} />
+                <Text style={[styles.headGlyph, { color: `${accent}65` }]}>◆</Text>
                 <Text style={[styles.suitLabel, { color: accent }]}>KATAGA</Text>
+                <Text style={[styles.headGlyph, { color: `${accent}65` }]}>◆</Text>
                 <View style={[styles.headLine, { backgroundColor: `${accent}40` }]} />
               </View>
 
@@ -583,16 +688,29 @@ export default function App() {
 
               {/* Bottom */}
               <View style={styles.cardFoot}>
-                <View style={[styles.footLine, { backgroundColor: `${accent}35` }]} />
+                <View style={styles.footDivider}>
+                  <View style={[styles.footLine, { backgroundColor: `${accent}30` }]} />
+                  <Text style={[styles.footGlyph, { color: `${accent}55` }]}>✦</Text>
+                  <View style={[styles.footLine, { backgroundColor: `${accent}30` }]} />
+                </View>
                 <Text style={[styles.drawLabel, { color: `${accent}75` }]}>draw  this</Text>
-                <Text style={[styles.footGlyph, { color: `${accent}55` }]}>◆</Text>
+                <View style={styles.footDivider}>
+                  <View style={[styles.footLine, { backgroundColor: `${accent}20` }]} />
+                  <Text style={[styles.footGlyph, { color: `${accent}40` }]}>◆</Text>
+                  <View style={[styles.footLine, { backgroundColor: `${accent}20` }]} />
+                </View>
               </View>
 
             </View>
 
             {/* Corner brackets */}
             {[styles.bTL, styles.bTR, styles.bBL, styles.bBR].map((pos, i) => (
-              <View key={i} style={[styles.bracket, pos, { borderColor: `${accent}45` }]} />
+              <View key={i} style={[styles.bracket, pos, { borderColor: `${accent}55` }]} />
+            ))}
+
+            {/* Corner diamonds */}
+            {[styles.cdTL, styles.cdTR, styles.cdBL, styles.cdBR].map((pos, i) => (
+              <View key={`cd${i}`} style={[styles.cornerDiamond, pos, { backgroundColor: accent }]} />
             ))}
 
             {/* Locked overlay */}
@@ -791,9 +909,14 @@ const styles = StyleSheet.create({
   },
 
   // ── Card ────────────────────────────────────────────────────────────────────
+  cardGlow: {
+    position: 'absolute',
+    width: CARD_W + 48,
+    height: CARD_H + 48,
+    borderRadius: 40,
+  },
   card: {
     backgroundColor: CARD_BG,
-    // Subtle arch top, nearly rectangular — like a real playing card
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderBottomLeftRadius: 14,
@@ -802,10 +925,10 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 18,
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.45,
+    shadowRadius: 40,
+    elevation: 24,
   },
   innerFrame: {
     flex: 1, width: '100%',
@@ -813,9 +936,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 16, paddingHorizontal: 10,
   },
+  innerBorder: {
+    position: 'absolute',
+    top: 4, left: 4, right: 4, bottom: 4,
+    borderWidth: 0.5, borderRadius: 4,
+  },
 
-  cardHead: { flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', width: '100%', gap: 8 },
   headLine: { flex: 1, height: 1 },
+  headGlyph: { fontSize: 7, fontFamily: FF_POPPINS },
   suitLabel: {
     fontSize: 9, fontFamily: FF_CINZEL, fontWeight: '600',
     letterSpacing: IS_WEB ? 6 : 2,
@@ -827,8 +956,17 @@ const styles = StyleSheet.create({
     height: CARD_W - 48,
     top: (CARD_H - (CARD_W - 48)) / 2,
     left: 24,
-    opacity: 0.12,
+    opacity: 0.13,
   },
+
+  // Side ornaments
+  sideOrn: {
+    position: 'absolute', top: 0, bottom: 0, width: 12,
+    alignItems: 'center', justifyContent: 'space-evenly',
+  },
+  sideOrnL: { left: 3 },
+  sideOrnR: { right: 3 },
+  sideChar: { fontSize: 6, fontFamily: FF_POPPINS, lineHeight: 8 },
 
   wordWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   wordText: {
@@ -841,19 +979,29 @@ const styles = StyleSheet.create({
     letterSpacing: IS_WEB ? -0.5 : 0,
   },
 
-  cardFoot: { alignItems: 'center', width: '100%', gap: 6 },
-  footLine: { width: '70%', height: 1 },
+  cardFoot: { alignItems: 'center', width: '100%', gap: 5 },
+  footDivider: { flexDirection: 'row', alignItems: 'center', width: '100%', gap: 8 },
+  footLine: { flex: 1, height: 1 },
   drawLabel: {
     fontSize: 8, fontFamily: FF_CINZEL,
     letterSpacing: IS_WEB ? 6 : 2, textTransform: 'uppercase',
   },
-  footGlyph: { fontSize: 10, fontFamily: FF_POPPINS },
+  footGlyph: { fontSize: 9, fontFamily: FF_POPPINS },
 
-  bracket: { position: 'absolute', width: 13, height: 13 },
-  bTL: { top: 27, left: 14, borderTopWidth: 1, borderLeftWidth: 1 },
-  bTR: { top: 27, right: 14, borderTopWidth: 1, borderRightWidth: 1 },
-  bBL: { bottom: 13, left: 14, borderBottomWidth: 1, borderLeftWidth: 1 },
-  bBR: { bottom: 13, right: 14, borderBottomWidth: 1, borderRightWidth: 1 },
+  // Corners — larger brackets + diamond tips
+  bracket: { position: 'absolute', width: 24, height: 24 },
+  bTL: { top: 22, left: 10, borderTopWidth: 1.5, borderLeftWidth: 1.5 },
+  bTR: { top: 22, right: 10, borderTopWidth: 1.5, borderRightWidth: 1.5 },
+  bBL: { bottom: 10, left: 10, borderBottomWidth: 1.5, borderLeftWidth: 1.5 },
+  bBR: { bottom: 10, right: 10, borderBottomWidth: 1.5, borderRightWidth: 1.5 },
+  cornerDiamond: {
+    position: 'absolute', width: 6, height: 6, opacity: 0.60,
+    transform: [{ rotate: '45deg' }],
+  },
+  cdTL: { top: 19, left: 7 },
+  cdTR: { top: 19, right: 7 },
+  cdBL: { bottom: 7, left: 7 },
+  cdBR: { bottom: 7, right: 7 },
 
   // ── Lock ────────────────────────────────────────────────────────────────────
   lockBtn: {
