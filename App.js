@@ -118,7 +118,7 @@ const SUGGESTED_THEMES = [
 ];
 
 // ─── localStorage (web only) ───────────────────────────────────────────────────
-const FAV_KEY = 'picto_favorites';
+const FAV_KEY = 'kataga_favorites';
 const store = {
   get: () => {
     if (!IS_WEB || typeof localStorage === 'undefined') return [];
@@ -482,7 +482,7 @@ export default function App() {
 
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.appName}>Picto!</Text>
+        <Text style={styles.appName}>Kataga!</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={[styles.pill, { borderColor: `${accent}50` }]}
@@ -570,7 +570,7 @@ export default function App() {
               {/* Top */}
               <View style={styles.cardHead}>
                 <View style={[styles.headLine, { backgroundColor: `${accent}40` }]} />
-                <Text style={[styles.suitLabel, { color: accent }]}>PICTO</Text>
+                <Text style={[styles.suitLabel, { color: accent }]}>KATAGA</Text>
                 <View style={[styles.headLine, { backgroundColor: `${accent}40` }]} />
               </View>
 
