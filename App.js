@@ -13,6 +13,7 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
+  ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -107,6 +108,27 @@ const THEMES = [
   { accent: '#9090CC' },   // lavender
   { accent: '#C8B490' },   // champagne
 ];
+
+// ─── Suggested Themes ─────────────────────────────────────────────────────────
+const SUGGESTED_THEMES = [
+  'Harry Potter', 'Disney', 'Marvel', 'Star Wars', 'Sports',
+  'Food & Cooking', 'Animals', 'Video Games', 'Movies & TV',
+  'Science & Space', 'Nature', 'Music', '90s Nostalgia',
+  'Halloween', 'Christmas', 'Fairy Tales', 'Travel', 'Superheroes',
+];
+
+// ─── localStorage (web only) ───────────────────────────────────────────────────
+const FAV_KEY = 'picto_favorites';
+const store = {
+  get: () => {
+    if (!IS_WEB || typeof localStorage === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem(FAV_KEY)) || []; } catch { return []; }
+  },
+  set: (val) => {
+    if (!IS_WEB || typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(val)); } catch {}
+  },
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
@@ -275,6 +297,7 @@ export default function App() {
   const [theme, setTheme]                   = useState(THEMES[0]);
   const [count, setCount]                   = useState(1);
   const [isLocked, setIsLocked]             = useState(false);
+  const [favorites, setFavorites]           = useState(() => store.get());
   const [modalVisible, setModalVisible]     = useState(false);
   const [inputText, setInputText]           = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
@@ -402,6 +425,31 @@ export default function App() {
     animateCard(() => { setWord(nextWord()); setTheme(t => nextTheme(t)); setCount(1); });
   };
 
+  const saveFavorite = () => {
+    if (!activeCategory) return;
+    const updated = [...favorites, { name: activeCategory, words: activeWordPool }];
+    setFavorites(updated);
+    store.set(updated);
+  };
+
+  const removeFavorite = (name) => {
+    const updated = favorites.filter(f => f.name !== name);
+    setFavorites(updated);
+    store.set(updated);
+  };
+
+  const loadFavorite = (fav) => {
+    activeWordPool = fav.words;
+    wordQueue = shuffle(fav.words);
+    setActiveCategory(fav.name);
+    setModalVisible(false);
+    setInputText('');
+    setError(null);
+    animateCard(() => { setWord(nextWord()); setTheme(t => nextTheme(t)); setCount(1); });
+  };
+
+  const isFavorited = favorites.some(f => f.name === activeCategory);
+
   const { accent } = theme;
 
   // Ring interpolations
@@ -445,6 +493,17 @@ export default function App() {
               {activeCategory ? `✦  ${activeCategory}` : '✦  Theme'}
             </Text>
           </TouchableOpacity>
+          {activeCategory ? (
+            <TouchableOpacity
+              style={[styles.pill, { borderColor: `${accent}50` }]}
+              onPress={isFavorited ? () => removeFavorite(activeCategory) : saveFavorite}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.pillText, { color: isFavorited ? accent : TEXT_MUT }]}>
+                {isFavorited ? '★' : '☆'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <View style={[styles.pill, { borderColor: `${accent}50` }]}>
             <Text style={[styles.pillText, { color: accent }]}>#{count}</Text>
           </View>
@@ -573,17 +632,56 @@ export default function App() {
 
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Set a Theme</Text>
-            <Text style={styles.modalSubtitle}>Type any theme and AI will generate words for it</Text>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Favorites */}
+              {favorites.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>FAVORITES</Text>
+                  <View style={styles.chipRow}>
+                    {favorites.map(fav => (
+                      <View key={fav.name} style={[styles.chip, styles.favChip, { borderColor: `${accent}50` }]}>
+                        <TouchableOpacity onPress={() => loadFavorite(fav)}>
+                          <Text style={[styles.chipText, { color: accent }]}>★  {fav.name}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => removeFavorite(fav.name)} style={styles.chipRemoveBtn}>
+                          <Text style={[styles.chipRemoveText, { color: `${accent}70` }]}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Suggested */}
+              <Text style={styles.sectionLabel}>SUGGESTED</Text>
+              <View style={styles.chipRow}>
+                {SUGGESTED_THEMES.map(name => {
+                  const saved = favorites.find(f => f.name === name);
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      style={[styles.chip, saved && { borderColor: `${accent}40` }]}
+                      onPress={() => saved ? loadFavorite(saved) : setInputText(name)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, saved && { color: accent }]}>
+                        {saved ? '★  ' : ''}{name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
 
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g. Harry Potter, Space, 90s cartoons…"
+              placeholder="or type any theme…"
               placeholderTextColor="#4A4540"
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={handleSetTheme}
               returnKeyType="go"
-              autoFocus
               editable={!loading}
             />
 
@@ -800,6 +898,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.55, shadowRadius: 30, elevation: 20,
   },
+  modalScroll: { maxHeight: 260, marginBottom: 16 },
+  sectionLabel: {
+    fontSize: 8, fontFamily: FF_CINZEL, fontWeight: '600',
+    color: TEXT_MUT, letterSpacing: IS_WEB ? 4 : 1,
+    marginTop: 14, marginBottom: 8,
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  favChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chipText: {
+    fontSize: 11, fontFamily: FF_POPPINS, fontWeight: '500', color: TEXT_MUT,
+  },
+  chipRemoveBtn: { paddingLeft: 2 },
+  chipRemoveText: { fontSize: 14, lineHeight: 16 },
+
   modalTitle: {
     fontSize: 22, fontFamily: FF_CINZEL, fontWeight: '700',
     color: TEXT_PRI, marginBottom: 6, letterSpacing: IS_WEB ? 1 : 0,
