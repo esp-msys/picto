@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -122,9 +122,8 @@ function nextTheme(current) {
 }
 
 // ─── Ornament ─────────────────────────────────────────────────────────────────
-const ORN = 124;
-
-function TarotOrnament({ color }) {
+function TarotOrnament({ color, size = 124 }) {
+  const ORN = size;
   const half = ORN / 2;
   const rings = [
     { r: 0.96, op: 0.18 },
@@ -203,6 +202,55 @@ function TarotOrnament({ color }) {
   );
 }
 
+// ─── Mystic Sound ─────────────────────────────────────────────────────────────
+function playMysticSound() {
+  if (!IS_WEB || typeof window === 'undefined') return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  try {
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.18, now);
+    master.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+    master.connect(ctx.destination);
+
+    // Shimmer chord — A minor with slight pitch-bend settle
+    [[440, 0], [523.25, 0.06], [659.25, 0.12], [880, 0.19]].forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator();
+      const g   = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * 1.018, now + delay);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.982, now + delay + 0.45);
+      g.gain.setValueAtTime(0,    now + delay);
+      g.gain.linearRampToValueAtTime(0.28, now + delay + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, now + delay + 1.4);
+      osc.connect(g); g.connect(master);
+      osc.start(now + delay); osc.stop(now + 2);
+    });
+
+    // Soft card-swish noise burst
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.22), ctx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.6);
+    const src  = ctx.createBufferSource();
+    src.buffer = buf;
+    const filt = ctx.createBiquadFilter();
+    filt.type  = 'bandpass';
+    filt.frequency.setValueAtTime(2200, now);
+    filt.frequency.exponentialRampToValueAtTime(600, now + 0.22);
+    filt.Q.value = 0.6;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.14, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    src.connect(filt); filt.connect(ng); ng.connect(master);
+    src.start(now);
+
+    setTimeout(() => ctx.close().catch(() => {}), 2500);
+  } catch (_) { /* silently ignore */ }
+}
+
 // ─── Magic Particles ──────────────────────────────────────────────────────────
 const SPARK_N = 14;
 const SPARK_CHARS = ['✦', '✧', '◆', '·', '✦', '✧', '✦', '◆', '·', '✦', '✧', '◆', '✦', '·'];
@@ -226,6 +274,7 @@ export default function App() {
   const [word, setWord]                     = useState(() => nextWord());
   const [theme, setTheme]                   = useState(THEMES[0]);
   const [count, setCount]                   = useState(1);
+  const [isLocked, setIsLocked]             = useState(false);
   const [modalVisible, setModalVisible]     = useState(false);
   const [inputText, setInputText]           = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
@@ -237,6 +286,26 @@ export default function App() {
   const cardY  = useRef(new Animated.Value(0)).current;
   const cardOp = useRef(new Animated.Value(1)).current;
   const busy   = useRef(false);
+
+  // Ambient orb drift
+  const orbX = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+  const orbY = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+
+  useEffect(() => {
+    const drift = (val, a, b, dA, dB) =>
+      Animated.loop(Animated.sequence([
+        Animated.timing(val, { toValue: a,  duration: dA, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(val, { toValue: b,  duration: dB, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(val, { toValue: 0,  duration: (dA + dB) / 2, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]));
+
+    drift(orbX[0],  70, -30,  9000, 12000).start();
+    drift(orbY[0], -50,  65, 13000,  9000).start();
+    drift(orbX[1], -80,  40, 14000, 10000).start();
+    drift(orbY[1],  55, -40, 10000, 14000).start();
+    drift(orbX[2],  45, -65,  8000, 11000).start();
+    drift(orbY[2], -60,  35, 12000,  8000).start();
+  }, []);
 
   // Magic effects
   const sparkAnims = useRef(Array.from({ length: SPARK_N }, () => new Animated.Value(0))).current;
@@ -292,13 +361,15 @@ export default function App() {
   }, [flipX, cardY, cardOp]);
 
   const handleTap = useCallback(() => {
+    if (isLocked) return;
+    playMysticSound();
     triggerMagic(theme.accent);
     animateCard(() => {
       setWord(nextWord());
       setTheme(t => nextTheme(t));
       setCount(c => c + 1);
     });
-  }, [animateCard, triggerMagic, theme]);
+  }, [animateCard, triggerMagic, theme, isLocked]);
 
   const handleSetTheme = async () => {
     const trimmed = inputText.trim();
@@ -342,6 +413,24 @@ export default function App() {
   return (
     <View style={styles.root}>
       <StatusBar style="light" hidden />
+
+      {/* ── Ambient glow orbs ── */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {[
+          { color: '#C9A455', style: styles.orb0 },
+          { color: '#6E8FB5', style: styles.orb1 },
+          { color: '#8E72B0', style: styles.orb2 },
+        ].map(({ color, style }, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              style,
+              { backgroundColor: color, transform: [{ translateX: orbX[i] }, { translateY: orbY[i] }] },
+              IS_WEB && { filter: `blur(${[120, 100, 90][i]}px)` },
+            ]}
+          />
+        ))}
+      </View>
 
       {/* ── Header ── */}
       <View style={styles.header}>
@@ -412,6 +501,11 @@ export default function App() {
               },
             ]}
           >
+            {/* Ornament — pixel-centered in card */}
+            <View style={styles.ornamentBg} pointerEvents="none">
+              <TarotOrnament color={accent} size={CARD_W - 48} />
+            </View>
+
             <View style={[styles.innerFrame, { borderColor: `${accent}30` }]}>
 
               {/* Top */}
@@ -421,14 +515,9 @@ export default function App() {
                 <View style={[styles.headLine, { backgroundColor: `${accent}40` }]} />
               </View>
 
-              {/* Ornament */}
-              <View style={styles.ornamentWrap}>
-                <TarotOrnament color={accent} />
-              </View>
-
-              {/* Word */}
+              {/* Word — full space */}
               <View style={styles.wordWrap}>
-                <Text style={styles.wordText} adjustsFontSizeToFit numberOfLines={2}>
+                <Text style={styles.wordText} adjustsFontSizeToFit numberOfLines={3}>
                   {word}
                 </Text>
               </View>
@@ -446,13 +535,29 @@ export default function App() {
             {[styles.bTL, styles.bTR, styles.bBL, styles.bBR].map((pos, i) => (
               <View key={i} style={[styles.bracket, pos, { borderColor: `${accent}45` }]} />
             ))}
+
+            {/* Locked overlay */}
+            {isLocked && (
+              <View style={[styles.lockedOverlay, { borderColor: `${accent}35` }]} pointerEvents="none" />
+            )}
           </Animated.View>
         </TouchableWithoutFeedback>
+
+        {/* Lock toggle */}
+        <TouchableOpacity
+          style={[styles.lockBtn, { borderColor: isLocked ? `${accent}70` : `${accent}28` }]}
+          onPress={() => setIsLocked(l => !l)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.lockText, { color: isLocked ? accent : TEXT_MUT }]}>
+            {isLocked ? '◉  LOCKED' : '◌  LOCK'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Footer ── */}
       <View style={styles.footer}>
-        <Text style={styles.footerPri}>tap for next word</Text>
+        <Text style={styles.footerPri}>{isLocked ? 'card locked — tap lock to flip' : 'tap for next word'}</Text>
         <Text style={styles.footerSec}>hide the screen from the guesser!</Text>
       </View>
 
@@ -542,6 +647,23 @@ const styles = StyleSheet.create({
     letterSpacing: IS_WEB ? 0.8 : 0,
   },
 
+  // ── Ambient orbs ────────────────────────────────────────────────────────────
+  orb0: {
+    position: 'absolute', borderRadius: 999,
+    width: 400, height: 400, top: -120, left: -140,
+    opacity: IS_WEB ? 0.52 : 0.07,
+  },
+  orb1: {
+    position: 'absolute', borderRadius: 999,
+    width: 320, height: 320, bottom: -80, right: -100,
+    opacity: IS_WEB ? 0.46 : 0.06,
+  },
+  orb2: {
+    position: 'absolute', borderRadius: 999,
+    width: 270, height: 270, top: height * 0.42, left: -80,
+    opacity: IS_WEB ? 0.38 : 0.05,
+  },
+
   // ── Card area & magic ────────────────────────────────────────────────────────
   cardArea: {
     alignItems: 'center',
@@ -601,16 +723,23 @@ const styles = StyleSheet.create({
     letterSpacing: IS_WEB ? 6 : 2,
   },
 
-  ornamentWrap: { alignItems: 'center', justifyContent: 'center', marginVertical: 2 },
+  ornamentBg: {
+    position: 'absolute',
+    width: CARD_W - 48,
+    height: CARD_W - 48,
+    top: (CARD_H - (CARD_W - 48)) / 2,
+    left: 24,
+    opacity: 0.12,
+  },
 
   wordWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   wordText: {
-    fontSize: 70,
+    fontSize: 58,
     fontFamily: FF_CORMORANT,
     fontWeight: IS_WEB ? '600' : 'bold',
     color: TEXT_PRI,
     textAlign: 'center',
-    lineHeight: 76,
+    lineHeight: 64,
     letterSpacing: IS_WEB ? -0.5 : 0,
   },
 
@@ -627,6 +756,25 @@ const styles = StyleSheet.create({
   bTR: { top: 27, right: 14, borderTopWidth: 1, borderRightWidth: 1 },
   bBL: { bottom: 13, left: 14, borderBottomWidth: 1, borderLeftWidth: 1 },
   bBR: { bottom: 13, right: 14, borderBottomWidth: 1, borderRightWidth: 1 },
+
+  // ── Lock ────────────────────────────────────────────────────────────────────
+  lockBtn: {
+    marginTop: 16,
+    paddingHorizontal: 18, paddingVertical: 8,
+    borderRadius: 6, borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  lockText: {
+    fontSize: 9, fontFamily: FF_CINZEL, fontWeight: '600',
+    letterSpacing: IS_WEB ? 4 : 1,
+  },
+  lockedOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
 
   // ── Footer ──────────────────────────────────────────────────────────────────
   footer: { alignItems: 'center', gap: 6 },
