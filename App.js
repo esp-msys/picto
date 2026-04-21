@@ -33,7 +33,7 @@ const FF_POPPINS   = IS_WEB ? 'Poppins, -apple-system, sans-serif' : undefined;
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const BG       = '#0E0C08';   // near-black warm
-const CARD_BG  = '#272320';   // dark grey card — clearly lighter than BG
+const CARD_BG  = '#080808';   // deep black card
 const TEXT_PRI = '#EDE4D0';   // warm cream
 const TEXT_MUT = 'rgba(237,228,208,0.42)';
 
@@ -410,6 +410,45 @@ export default function App() {
     ])).start();
   }, []);
 
+  // Gyroscope tilt (mobile)
+  useEffect(() => {
+    if (!IS_WEB) return;
+    let baseB = null, baseG = null;
+
+    const handleOrientation = (e) => {
+      const beta  = e.beta  ?? 0;   // front-back tilt, -180..180
+      const gamma = e.gamma ?? 0;   // left-right tilt,  -90..90
+
+      if (baseB === null) { baseB = beta;  baseG = gamma; return; }
+
+      const db = Math.max(-30, Math.min(30, beta  - baseB));
+      const dg = Math.max(-30, Math.min(30, gamma - baseG));
+
+      // Map ±30° device tilt → ±1 tilt value (same range as mouse hover)
+      Animated.spring(tiltX, { toValue:  db / 30, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+      Animated.spring(tiltY, { toValue: dg / 30, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+
+      // Shine follows tilt direction
+      const nx = (dg / 30) * 0.5 + 0.5;
+      const ny = (db / 30) * 0.5 + 0.5;
+      setShineStyle({ left: `${nx * 100}%`, top: `${ny * 100}%`, opacity: 0.18 });
+    };
+
+    const requestAndListen = async () => {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm !== 'granted') return;
+        } catch { return; }
+      }
+      window.addEventListener('deviceorientation', handleOrientation);
+    };
+
+    requestAndListen();
+    return () => window.removeEventListener('deviceorientation', handleOrientation);
+  }, [tiltX, tiltY]);
+
   // Magic effects
   const sparkAnims = useRef(Array.from({ length: SPARK_N }, () => new Animated.Value(0))).current;
   const ringAnim   = useRef(new Animated.Value(0)).current;
@@ -551,7 +590,7 @@ export default function App() {
   const { accent } = theme;
 
   // Glow interpolation
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.10, 0.22] });
+  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.38] });
 
   // 3D tilt interpolations (JS driver — separate from native-driver card)
   const tiltRotX = tiltX.interpolate({ inputRange: [-1, 1], outputRange: ['12deg', '-12deg'] });
@@ -758,6 +797,14 @@ export default function App() {
             {[styles.cdTL, styles.cdTR, styles.cdBL, styles.cdBR].map((pos, i) => (
               <View key={`cd${i}`} style={[styles.cornerDiamond, pos, { backgroundColor: accent }]} />
             ))}
+
+            {/* Glossy sheen — static top-highlight like lacquered card */}
+            {IS_WEB && (
+              <View
+                style={[styles.cardGloss, { borderTopLeftRadius: 27, borderTopRightRadius: 27 }]}
+                pointerEvents="none"
+              />
+            )}
 
             {/* Locked overlay */}
             {isLocked && (
@@ -974,6 +1021,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 40%, transparent 100%)',
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+  },
   cardShine: {
     position: 'absolute',
     width: CARD_W * 0.7,
@@ -993,10 +1050,10 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 22 },
-    shadowOpacity: 0.45,
-    shadowRadius: 40,
-    elevation: 24,
+    shadowOffset: { width: 0, height: 28 },
+    shadowOpacity: 0.65,
+    shadowRadius: 50,
+    elevation: 28,
   },
   innerFrame: {
     flex: 1, width: '100%',
