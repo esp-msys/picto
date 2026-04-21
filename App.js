@@ -369,10 +369,13 @@ export default function App() {
   const cardOp = useRef(new Animated.Value(1)).current;
   const busy   = useRef(false);
 
-  // 3D tilt (hover)
+  // 3D tilt (hover + gyro)
   const tiltX  = useRef(new Animated.Value(0)).current;
   const tiltY  = useRef(new Animated.Value(0)).current;
-  const [shineStyle, setShineStyle] = useState({ left: '50%', top: '50%', opacity: 0 });
+  const [shineStyle, setShineStyle]     = useState({ left: '50%', top: '50%', opacity: 0 });
+  const [shimmerAngle, setShimmerAngle] = useState(125);
+  const gyroAttached = useRef(false);
+  const gyroBase     = useRef({ b: null, g: null });
 
   // Ambient orb drift
   const orbX = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
@@ -410,44 +413,53 @@ export default function App() {
     ])).start();
   }, []);
 
-  // Gyroscope tilt (mobile)
+  // Inject CSS keyframe for holographic shimmer sweep
   useEffect(() => {
     if (!IS_WEB) return;
-    let baseB = null, baseG = null;
+    const el = document.createElement('style');
+    el.id = 'kataga-holo';
+    el.textContent = `@keyframes holoSweep { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }`;
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, []);
 
-    const handleOrientation = (e) => {
-      const beta  = e.beta  ?? 0;   // front-back tilt, -180..180
-      const gamma = e.gamma ?? 0;   // left-right tilt,  -90..90
-
-      if (baseB === null) { baseB = beta;  baseG = gamma; return; }
-
-      const db = Math.max(-30, Math.min(30, beta  - baseB));
-      const dg = Math.max(-30, Math.min(30, gamma - baseG));
-
-      // Map ±30° device tilt → ±1 tilt value (same range as mouse hover)
-      Animated.spring(tiltX, { toValue:  db / 30, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
-      Animated.spring(tiltY, { toValue: dg / 30, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
-
-      // Shine follows tilt direction
-      const nx = (dg / 30) * 0.5 + 0.5;
-      const ny = (db / 30) * 0.5 + 0.5;
-      setShineStyle({ left: `${nx * 100}%`, top: `${ny * 100}%`, opacity: 0.18 });
-    };
-
-    const requestAndListen = async () => {
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const perm = await DeviceOrientationEvent.requestPermission();
-          if (perm !== 'granted') return;
-        } catch { return; }
-      }
-      window.addEventListener('deviceorientation', handleOrientation);
-    };
-
-    requestAndListen();
-    return () => window.removeEventListener('deviceorientation', handleOrientation);
+  // Shared gyro/mouse tilt updater
+  const applyTilt = useCallback((nx, ny) => {
+    const x = nx - 0.5;  // -0.5..0.5
+    const y = ny - 0.5;
+    Animated.spring(tiltY, { toValue: x * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+    Animated.spring(tiltX, { toValue: y * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
+    setShineStyle({ left: `${nx * 100}%`, top: `${ny * 100}%`, opacity: 0.32 });
+    setShimmerAngle(105 + x * 80);   // gradient rotates ±40° with tilt
   }, [tiltX, tiltY]);
+
+  // Attach gyro listener (called from user gesture for iOS compat)
+  const attachGyro = useCallback(() => {
+    if (gyroAttached.current) return;
+    gyroAttached.current = true;
+
+    const handler = (e) => {
+      const beta  = e.beta  ?? 0;
+      const gamma = e.gamma ?? 0;
+      const base  = gyroBase.current;
+      if (base.b === null) { base.b = beta; base.g = gamma; return; }
+
+      const db = Math.max(-30, Math.min(30, beta  - base.b));
+      const dg = Math.max(-30, Math.min(30, gamma - base.g));
+      applyTilt(dg / 30 * 0.5 + 0.5, db / 30 * 0.5 + 0.5);
+    };
+
+    window.addEventListener('deviceorientation', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.removeEventListener('deviceorientation', handler);
+  }, [applyTilt]);
+
+  // On non-iOS: attach gyro automatically (no permission needed)
+  useEffect(() => {
+    if (!IS_WEB) return;
+    if (typeof DeviceOrientationEvent?.requestPermission === 'function') return; // iOS — wait for tap
+    attachGyro();
+  }, [attachGyro]);
 
   // Magic effects
   const sparkAnims = useRef(Array.from({ length: SPARK_N }, () => new Animated.Value(0))).current;
@@ -504,6 +516,14 @@ export default function App() {
 
   const handleTap = useCallback(() => {
     if (isLocked) return;
+
+    // iOS requires DeviceOrientation permission from a user gesture
+    if (IS_WEB && typeof DeviceOrientationEvent?.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(p => { if (p === 'granted') attachGyro(); })
+        .catch(() => {});
+    }
+
     playMysticSound();
     triggerMagic(theme.accent);
     animateCard(() => {
@@ -511,24 +531,22 @@ export default function App() {
       setTheme(t => nextTheme(t));
       setCount(c => c + 1);
     });
-  }, [animateCard, triggerMagic, theme, isLocked]);
+  }, [animateCard, triggerMagic, theme, isLocked, attachGyro]);
 
   const handleCardMouseMove = useCallback((e) => {
     if (!IS_WEB) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const nx = (e.clientX - rect.left) / rect.width;   // 0–1
-    const ny = (e.clientY - rect.top)  / rect.height;  // 0–1
-    const x = nx - 0.5;  // -0.5 to 0.5
-    const y = ny - 0.5;
-    Animated.spring(tiltY, { toValue: x * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
-    Animated.spring(tiltX, { toValue: y * 2, useNativeDriver: false, speed: 30, bounciness: 0 }).start();
-    setShineStyle({ left: `${nx * 100}%`, top: `${ny * 100}%`, opacity: 0.18 });
-  }, [tiltX, tiltY]);
+    applyTilt(
+      (e.clientX - rect.left) / rect.width,
+      (e.clientY - rect.top)  / rect.height,
+    );
+  }, [applyTilt]);
 
   const handleCardMouseLeave = useCallback(() => {
     Animated.spring(tiltX, { toValue: 0, useNativeDriver: false, speed: 8, bounciness: 3 }).start();
     Animated.spring(tiltY, { toValue: 0, useNativeDriver: false, speed: 8, bounciness: 3 }).start();
     setShineStyle(s => ({ ...s, opacity: 0 }));
+    setShimmerAngle(125);
   }, [tiltX, tiltY]);
 
   const handleSetTheme = async () => {
@@ -798,10 +816,34 @@ export default function App() {
               <View key={`cd${i}`} style={[styles.cornerDiamond, pos, { backgroundColor: accent }]} />
             ))}
 
-            {/* Glossy sheen — static top-highlight like lacquered card */}
+            {/* Holographic shimmer — sweeps continuously, rotates with tilt */}
+            {IS_WEB && (
+              <View style={styles.cardHoloWrap} pointerEvents="none">
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backgroundImage: `linear-gradient(${shimmerAngle}deg,
+                    transparent 15%,
+                    rgba(255,210,80,0.13) 25%,
+                    rgba(255,255,255,0.28) 32%,
+                    rgba(120,210,255,0.16) 38%,
+                    rgba(190,120,255,0.14) 45%,
+                    rgba(255,160,90,0.12) 52%,
+                    rgba(255,255,255,0.22) 58%,
+                    rgba(100,255,200,0.12) 64%,
+                    transparent 74%
+                  )`,
+                  backgroundSize: '250% 100%',
+                  animation: 'holoSweep 3.5s linear infinite',
+                  mixBlendMode: 'screen',
+                  borderRadius: 'inherit',
+                }} />
+              </View>
+            )}
+
+            {/* Specular spot — follows mouse / gyro */}
             {IS_WEB && (
               <View
-                style={[styles.cardGloss, { borderTopLeftRadius: 27, borderTopRightRadius: 27 }]}
+                style={[styles.cardShine, shineStyle, { filter: 'blur(28px)' }]}
                 pointerEvents="none"
               />
             )}
@@ -809,14 +851,6 @@ export default function App() {
             {/* Locked overlay */}
             {isLocked && (
               <View style={[styles.lockedOverlay, { borderColor: `${accent}35` }]} pointerEvents="none" />
-            )}
-
-            {/* 3D shine highlight — follows mouse */}
-            {IS_WEB && (
-              <View
-                style={[styles.cardShine, shineStyle, { filter: 'blur(32px)' }]}
-                pointerEvents="none"
-              />
             )}
           </Animated.View>
         </TouchableWithoutFeedback>
@@ -1021,15 +1055,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardGloss: {
+  cardHoloWrap: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '55%',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 40%, transparent 100%)',
+    top: 0, left: 0, right: 0, bottom: 0,
     borderTopLeftRadius: 27,
     borderTopRightRadius: 27,
+    borderBottomLeftRadius: 13,
+    borderBottomRightRadius: 13,
+    overflow: 'hidden',
   },
   cardShine: {
     position: 'absolute',
